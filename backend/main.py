@@ -1,10 +1,35 @@
 from fastapi import FastAPI  # type: ignore[import]
 from pydantic import BaseModel  # type: ignore[import]
 from dotenv import load_dotenv  # type: ignore[import]
+from fastapi.middleware.cors import CORSMiddleware
+# 导入百度SDK
+from aip import AipNlp
 import os
 import httpx  # type: ignore[import]
 
+# 导入共情回复策略
+from empathy_strategy import analyze_and_respond, detect_emotion
+
+# 导入数据库操作
+from database import init_database, create_conversation, save_message, get_user_conversations, get_conversation_messages, get_user_sentiment_trend, get_daily_sentiment_summary
+
+# 导入用户画像分析
+from user_profile import analyze_user_profile, analyze_emotion_trend, get_emotion_summary
+
 app = FastAPI()
+
+# 初始化数据库
+init_database()
+print("数据库初始化完成")
+
+# 添加CORS配置
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 生产环境中应该设置具体的域名
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 load_dotenv()
 
@@ -16,6 +41,312 @@ def ping():
 def hello():
     return {"text": "你好，我是后端，已经运行成功啦！"}
 
+# 初始化百度情感分析客户端
+def get_baidu_nlp_client():
+    return AipNlp(
+        os.getenv("BAIDU_APP_ID"),
+        os.getenv("BAIDU_API_KEY"),
+        os.getenv("BAIDU_SECRET_KEY")
+    )
+
+async def analyze_sentiment(text: str) -> dict:
+    """
+    百度情感分析 - 优化版本
+    结合百度API结果和关键词辅助判断
+    """
+    try:
+        client = get_baidu_nlp_client()
+        
+        # 调用百度情感分析API
+        if isinstance(text, bytes):
+            text = text.decode('utf-8')
+        
+        result = client.sentimentClassify(text)
+        
+        print(f"[DEBUG] 输入文本: {text}")
+        print(f"[DEBUG] 百度API返回结果: {result}")
+        
+        # 解析结果
+        if 'items' in result and result['items']:
+            item = result['items'][0]
+            sentiment = item.get('sentiment', 0)
+            confidence = item.get('confidence', 0)
+            positive_prob = item.get('positive_prob', 0)
+            negative_prob = item.get('negative_prob', 0)
+            
+            print(f"[DEBUG] sentiment: {sentiment}, confidence: {confidence}")
+            print(f"[DEBUG] positive_prob: {positive_prob}, negative_prob: {negative_prob}")
+            
+            # 关键词辅助判断
+            keyword_sentiment = analyze_sentiment_by_keywords(text)
+            print(f"[DEBUG] 关键词判断: {keyword_sentiment}")
+            
+            # 综合判断：结合API结果和关键词
+            final_sentiment = combine_sentiment_results(
+                api_sentiment=sentiment,
+                api_positive_prob=positive_prob,
+                api_negative_prob=negative_prob,
+                keyword_sentiment=keyword_sentiment
+            )
+            
+            return final_sentiment
+        else:
+            return simple_sentiment_analysis(text)
+            
+    except Exception as e:
+        print(f"百度情感分析错误: {e}")
+        return simple_sentiment_analysis(text)
+
+def analyze_sentiment_by_keywords(text: str) -> dict:
+    """
+    基于关键词的情感分析
+    返回: {'sentiment': True/False/None, 'confidence': float}
+    """
+    # 扩展情感词典
+    positive_words = [
+        "开心", "快乐", "高兴", "喜悦", "幸福", "满足", "兴奋", "棒", "好",
+        "很好", "不错", "喜欢", "爱", "赞", "优秀", "完美", "愉快", "舒服",
+        "轻松", "自在", "满足", "欣慰", "感动", "温暖", "甜蜜", "美好"
+    ]
+    
+    negative_words = [
+        "难过", "悲伤", "痛苦", "焦虑", "愤怒", "失望", "沮丧", "累", "烦",
+        "不好", "糟糕", "差", "讨厌", "恨", "伤心", "郁闷", "烦躁", "压抑",
+        "孤独", "寂寞", "无助", "绝望", "崩溃", "受不了", "烦死了", "气死了"
+    ]
+    
+    # 计算关键词得分
+    text_lower = text.lower()
+    positive_score = sum(2 if word in text_lower else 0 for word in positive_words)
+    negative_score = sum(2 if word in text_lower else 0 for word in negative_words)
+    
+    # 考虑否定词
+    negation_words = ["不", "没", "无", "别", "不要", "没有"]
+    negation_count = sum(1 for word in negation_words if word in text_lower)
+    
+    # 如果有否定词，可能反转情感
+    if negation_count > 0:
+        # 简单的否定处理：如果负面词被否定，可能变成正面
+        if negative_score > 0:
+            negative_score *= 0.5  # 降低负面得分
+    
+    # 判断结果
+    if positive_score > negative_score:
+        return {'sentiment': True, 'confidence': min(0.9, 0.5 + positive_score * 0.1)}
+    elif negative_score > positive_score:
+        return {'sentiment': False, 'confidence': min(0.9, 0.5 + negative_score * 0.1)}
+    else:
+        return {'sentiment': None, 'confidence': 0.5}
+
+def combine_sentiment_results(api_sentiment, api_positive_prob, api_negative_prob, keyword_sentiment):
+    """
+    综合API结果和关键词判断
+    """
+    # 如果API和关键词判断一致，使用API的置信度
+    if api_sentiment == 2 and keyword_sentiment['sentiment'] == True:  # 都判断为正向
+        return {
+            "sentiment": True,
+            "label": "正向",
+            "confidence": max(api_positive_prob, keyword_sentiment['confidence']),
+            "positive": api_positive_prob,
+            "negative": api_negative_prob,
+            "neutral": 0
+        }
+    elif api_sentiment == 0 and keyword_sentiment['sentiment'] == False:  # 都判断为负向
+        return {
+            "sentiment": False,
+            "label": "负向",
+            "confidence": max(api_negative_prob, keyword_sentiment['confidence']),
+            "positive": api_positive_prob,
+            "negative": api_negative_prob,
+            "neutral": 0
+        }
+    # 如果不一致，优先使用关键词判断（对于短文本更准确）
+    elif keyword_sentiment['sentiment'] is not None:
+        if keyword_sentiment['sentiment'] == True:
+            return {
+                "sentiment": True,
+                "label": "正向",
+                "confidence": keyword_sentiment['confidence'],
+                "positive": api_positive_prob,
+                "negative": api_negative_prob,
+                "neutral": 0
+            }
+        else:
+            return {
+                "sentiment": False,
+                "label": "负向",
+                "confidence": keyword_sentiment['confidence'],
+                "positive": api_positive_prob,
+                "negative": api_negative_prob,
+                "neutral": 0
+            }
+    # 默认使用API结果
+    else:
+        if api_sentiment == 2:
+            return {
+                "sentiment": True,
+                "label": "正向",
+                "confidence": api_positive_prob,
+                "positive": api_positive_prob,
+                "negative": api_negative_prob,
+                "neutral": 0
+            }
+        elif api_sentiment == 0:
+            return {
+                "sentiment": False,
+                "label": "负向",
+                "confidence": api_negative_prob,
+                "positive": api_positive_prob,
+                "negative": api_negative_prob,
+                "neutral": 0
+            }
+        else:
+            return {
+                "sentiment": None,
+                "label": "中性",
+                "confidence": 0.5,
+                "positive": api_positive_prob,
+                "negative": api_negative_prob,
+                "neutral": 0.4
+            }
+
+def simple_sentiment_analysis(text: str) -> dict:
+    """
+    本地简单情感分析（降级方案）
+    """
+    positive_words = ["开心", "快乐", "高兴", "喜悦", "幸福", "满足", "兴奋", "棒", "好"]
+    negative_words = ["难过", "悲伤", "痛苦", "焦虑", "愤怒", "失望", "沮丧", "累", "烦"]
+    
+    positive_score = sum(1 for word in positive_words if word in text)
+    negative_score = sum(1 for word in negative_words if word in text)
+    
+    if positive_score > negative_score:
+        return {
+            "sentiment": True,
+            "label": "正向",
+            "confidence": 0.7,
+            "positive": 0.7,
+            "negative": 0.2,
+            "neutral": 0.1
+        }
+    elif negative_score > positive_score:
+        return {
+            "sentiment": False,
+            "label": "负向",
+            "confidence": 0.7,
+            "positive": 0.2,
+            "negative": 0.7,
+            "neutral": 0.1
+        }
+    else:
+        return {
+            "sentiment": None,
+            "label": "中性",
+            "confidence": 0.5,
+            "positive": 0.3,
+            "negative": 0.3,
+            "neutral": 0.4
+        }
+
+class SentimentRequest(BaseModel):
+    text: str
+
+@app.post("/sentiment")
+async def sentiment_analysis(req: SentimentRequest):
+    result = await analyze_sentiment(req.text)
+    return result
+
+
+# 数据库相关API
+@app.get("/conversations/{user_id}")
+async def get_conversations(user_id: str):
+    """
+    获取用户的所有会话
+    """
+    conversations = get_user_conversations(user_id)
+    return {"conversations": conversations}
+
+
+@app.get("/messages/{conversation_id}")
+async def get_messages(conversation_id: str):
+    """
+    获取会话的所有消息
+    """
+    messages = get_conversation_messages(conversation_id)
+    return {"messages": messages}
+
+
+@app.get("/sentiment/trend/{user_id}")
+async def get_sentiment_trend(user_id: str, days: int = 7):
+    """
+    获取用户的情感趋势
+    """
+    trend = get_user_sentiment_trend(user_id, days)
+    return {"trend": trend}
+
+
+@app.get("/sentiment/summary/{user_id}")
+async def get_sentiment_summary_api(user_id: str, days: int = 7):
+    """
+    获取用户的每日情感总结
+    """
+    summary = get_daily_sentiment_summary(user_id, days)
+    return {"summary": summary}
+
+
+# 用户画像与情感趋势分析API
+@app.get("/profile/{user_id}")
+async def get_user_profile(user_id: str):
+    """
+    获取用户画像
+    """
+    conversations = get_user_conversations(user_id)
+    all_messages = []
+    
+    for conv in conversations:
+        messages = get_conversation_messages(conv["id"])
+        all_messages.extend(messages)
+    
+    # 只分析用户消息
+    user_messages = [msg for msg in all_messages if msg.get("role") == "user"]
+    
+    profile = analyze_user_profile(user_messages)
+    return {"profile": profile}
+
+
+@app.get("/profile/trend/{user_id}")
+async def get_profile_trend(user_id: str, days: int = 7):
+    """
+    获取用户的情感趋势分析
+    """
+    conversations = get_user_conversations(user_id)
+    all_messages = []
+    
+    for conv in conversations:
+        messages = get_conversation_messages(conv["id"])
+        all_messages.extend(messages)
+    
+    # 只分析用户消息
+    user_messages = [msg for msg in all_messages if msg.get("role") == "user"]
+    
+    # 过滤最近N天的消息
+    from datetime import datetime, timedelta
+    cutoff_date = datetime.now() - timedelta(days=days)
+    recent_messages = []
+    
+    for msg in user_messages:
+        timestamp = msg.get("timestamp", "")
+        if timestamp:
+            try:
+                msg_date = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f")
+                if msg_date >= cutoff_date:
+                    recent_messages.append(msg)
+            except:
+                pass
+    
+    trend = analyze_emotion_trend(recent_messages, days)
+    return {"trend": trend}
 
 class ChatRequest(BaseModel):
     text: str
@@ -162,36 +493,92 @@ async def chat(req: ChatRequest):
     print(f"COZE_API_BASE: {os.getenv('COZE_API_BASE')}")
     print("===================")
 
+    # 1. 使用共情策略进行情绪分析
+    empathy_result = analyze_and_respond(user_text)
+    print(f"[DEBUG] 共情分析结果: {empathy_result}")
+
+    # 2. 确保会话存在
+    conversation_id = create_conversation(user_id, conversation_id)
+    print(f"[DEBUG] 会话ID: {conversation_id}")
+
+    # 3. 保存用户消息到数据库
+    user_sentiment = {
+        "sentiment": empathy_result["category"] == "positive",
+        "label": empathy_result["emotion_chinese"],
+        "confidence": empathy_result["confidence"],
+        "emotion": empathy_result["emotion"],
+        "category": empathy_result["category"]
+    }
+    save_message(conversation_id, "user", user_text, user_sentiment)
+    print(f"[DEBUG] 用户消息已保存")
+
+    # 4. 获取AI Prompt（包含详细的共情指导）
+    ai_prompt = empathy_result["ai_prompt"]
+    print(f"[DEBUG] AI Prompt已生成")
+
+    # 5. 构建带情绪提示的用户输入
+    enhanced_user_text = ai_prompt
+
+    # 6. 生成回复
+    reply = ""
+    provider = ""
+    
     # 优先走 Coze（如果配置了 Key + BotId）
     if os.getenv("COZE_API_KEY") and os.getenv("COZE_BOT_ID"):
         # 使用简单 API 调用
         try:
             print("[DEBUG] 尝试调用 Coze 简单 API")
-            reply = await _call_coze_simple(user_text, user_id=user_id, conversation_id=conversation_id)
+            reply = await _call_coze_simple(enhanced_user_text, user_id=user_id, conversation_id=conversation_id)
             print(f"[DEBUG] Coze 简单 API 调用成功: {reply[:50]}...")
-            return {"reply": reply, "provider": "coze_simple"}
+            provider = "coze_simple"
         except Exception as e:
             error_msg = str(e)
             print(f"[DEBUG] Coze 简单 API 调用异常: {type(e).__name__}: {error_msg}")
-            # 暂时返回测试回复，以便服务能够正常运行
-            return {
-                "reply": "你好！我是测试回复。后端服务运行正常，但Coze API暂时无法连接。",
-                "provider": "test"
-            }
-            # 以下是原来的错误提示，暂时注释掉
-            # return {
-            #     "reply": "抱歉，AI 服务暂时无法连接。请稍后再试，或检查 Bot 是否已正确发布。",
-            #     "provider": "error"
-            # }
+            # 使用共情策略生成的回复
+            reply = empathy_result["empathy_response"]
+            provider = "empathy_strategy"
     else:
-        print("[DEBUG] Coze API 配置不完整，使用本地兜底回复")
+        print("[DEBUG] Coze API 配置不完整，使用共情策略回复")
+        # 没配置 Coze 时：使用共情策略生成的回复
+        reply = empathy_result["empathy_response"]
+        provider = "empathy_strategy"
 
-    # 没配置 Coze 时：本地兜底“共情风格”回复，保证 demo 随时可跑
-    low_mood_markers = ("难过", "不开心", "焦虑", "崩溃", "压力", "累", "想哭", "烦", "抑郁")
-    if any(k in user_text for k in low_mood_markers):
-        reply = "我听到你现在有点不容易。愿意的话，你可以多说一点：是发生了什么，还是这种感觉已经持续了一段时间？"
-    else:
-        reply = "我在。你愿意和我说说你现在最在意的是什么吗？"
+    # 7. 保存AI回复到数据库
+    save_message(conversation_id, "assistant", reply)
+    print(f"[DEBUG] AI回复已保存")
 
-    print(f"[DEBUG] 使用本地兜底回复: {reply[:50]}...")
-    return {"reply": reply, "provider": "local_fallback"}
+    print(f"[DEBUG] 使用{provider}回复: {reply[:50]}...")
+    return {
+        "reply": reply, 
+        "provider": provider, 
+        "conversation_id": conversation_id,
+        "sentiment": user_sentiment
+    }
+
+def generate_mood_prompt(sentiment_result: dict) -> str:
+    """
+    根据情感分析结果生成情绪提示
+    """
+    sentiment = sentiment_result.get("sentiment")
+    label = sentiment_result.get("label", "中性")
+    confidence = sentiment_result.get("confidence", 0.5)
+    
+    if sentiment is True:  # 正向
+        return f"【系统提示】用户当前情绪为{label}（置信度{confidence:.0%}）。请用轻松、愉快、温暖的语气回答，可以分享用户的喜悦，保持积极向上的态度。"
+    elif sentiment is False:  # 负向
+        return f"【系统提示】用户当前情绪为{label}（置信度{confidence:.0%}）。请用温柔、理解、共情的语气回答，优先倾听和安慰，不要急于给建议，多用'我能理解你'、'我在这里陪着你'这类表达，让用户感到被接纳和支持。"
+    else:  # 中性
+        return f"【系统提示】用户当前情绪为{label}。请用正常、友好、温和的语气回答，保持开放和接纳的态度。"
+
+def generate_local_reply(user_text: str, sentiment_result: dict) -> str:
+    """
+    根据情感分析结果生成本地兜底回复
+    """
+    sentiment = sentiment_result.get("sentiment")
+    
+    if sentiment is True:  # 正向
+        return "听你这么说，我也能感受到你的开心！愿意和我分享一下是什么让你这么高兴吗？"
+    elif sentiment is False:  # 负向
+        return "我能感受到你现在可能不太好受。愿意的话，可以和我多说一点，我一直在这里陪着你。"
+    else:  # 中性
+        return "我在呢。你想聊点什么都可以，我会一直陪着你。"
