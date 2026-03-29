@@ -11,13 +11,23 @@ import httpx  # type: ignore[import]
 from empathy_strategy import analyze_and_respond, detect_emotion
 
 # 导入数据库操作
-from database import init_database, create_conversation, save_message, get_user_conversations, get_conversation_messages, get_user_sentiment_trend, get_daily_sentiment_summary
+from database import init_database, create_conversation, save_message, get_user_conversations, get_conversation_messages, get_user_sentiment_trend, get_daily_sentiment_summary, create_user, get_user_by_username, update_user_last_active, save_emotion_diary, get_emotion_diary, get_emotion_diary_list
+
+# 导入密码哈希
+import hashlib
+import uuid
 
 # 导入用户画像分析
 from user_profile import analyze_user_profile, analyze_emotion_trend, get_emotion_summary
 
 # 导入情感监测与干预
 from emotion_monitor import add_emotion_record, check_emotion_alert, get_intervention_suggestion, get_emotion_trend, reset_emotion_monitor
+
+# 导入语音服务
+from voice_service import speech_to_text, text_to_speech
+
+# 导入智能推荐服务
+from recommendation_service import get_recommendations
 
 app = FastAPI()
 
@@ -47,6 +57,178 @@ def ping():
 @app.get("/hello")
 def hello():
     return {"text": "你好，我是后端，已经运行成功啦！"}
+
+
+# ==================== 用户认证API ====================
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    email: str = None
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+def hash_password(password: str) -> str:
+    """密码哈希"""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
+@app.post("/auth/register")
+async def register(req: RegisterRequest):
+    """
+    用户注册
+    """
+    # 检查用户名是否已存在
+    existing_user = get_user_by_username(req.username)
+    if existing_user:
+        return {"success": False, "message": "用户名已存在"}
+    
+    # 生成用户ID
+    user_id = str(uuid.uuid4())
+    
+    # 创建用户
+    password_hash = hash_password(req.password)
+    success = create_user(user_id, req.username, password_hash, req.email)
+    
+    if success:
+        return {
+            "success": True, 
+            "message": "注册成功",
+            "user_id": user_id,
+            "username": req.username
+        }
+    else:
+        return {"success": False, "message": "注册失败"}
+
+
+@app.post("/auth/login")
+async def login(req: LoginRequest):
+    """
+    用户登录
+    """
+    # 获取用户信息
+    user = get_user_by_username(req.username)
+    if not user:
+        return {"success": False, "message": "用户名或密码错误"}
+    
+    # 验证密码
+    password_hash = hash_password(req.password)
+    if user["password_hash"] != password_hash:
+        return {"success": False, "message": "用户名或密码错误"}
+    
+    # 更新最后活跃时间
+    update_user_last_active(user["id"])
+    
+    return {
+        "success": True,
+        "message": "登录成功",
+        "user_id": user["id"],
+        "username": user["username"],
+        "email": user["email"]
+    }
+
+
+# ==================== 情感日记API ====================
+
+class EmotionDiaryRequest(BaseModel):
+    user_id: str
+    date: str
+    emotion: str
+    intensity: int
+    notes: str = None
+    tags: str = None
+
+
+@app.post("/diary/save")
+async def save_diary(req: EmotionDiaryRequest):
+    """
+    保存情感日记
+    """
+    success = save_emotion_diary(
+        req.user_id, req.date, req.emotion, req.intensity, req.notes, req.tags
+    )
+    
+    if success:
+        return {"success": True, "message": "日记保存成功"}
+    else:
+        return {"success": False, "message": "日记保存失败"}
+
+
+@app.get("/diary/{user_id}")
+async def get_diary(user_id: str, date: str = None):
+    """
+    获取情感日记
+    """
+    diary = get_emotion_diary(user_id, date)
+    return {"success": True, "diary": diary}
+
+
+@app.get("/diary/list/{user_id}")
+async def get_diary_list(user_id: str, days: int = 30):
+    """
+    获取情感日记列表
+    """
+    diaries = get_emotion_diary_list(user_id, days)
+    return {"success": True, "diaries": diaries}
+
+
+# ==================== 语音API ====================
+
+from fastapi import File, UploadFile
+
+
+@app.post("/voice/speech-to-text")
+async def voice_to_text(audio: UploadFile = File(...)):
+    """
+    语音识别：将语音转换为文字
+    """
+    try:
+        audio_data = await audio.read()
+        result = speech_to_text(audio_data)
+        return result
+    except Exception as e:
+        return {"success": False, "text": "", "error": str(e)}
+
+
+@app.post("/voice/text-to-speech")
+async def voice_text_to_speech(text: str, spd: int = 5, pit: int = 5, vol: int = 5, per: int = 0):
+    """
+    语音合成：将文字转换为语音
+    """
+    try:
+        result = text_to_speech(text, spd, pit, vol, per)
+        if result["success"]:
+            # 返回音频数据（Base64编码）
+            import base64
+            audio_base64 = base64.b64encode(result["audio_data"]).decode('utf-8')
+            return {
+                "success": True,
+                "audio_base64": audio_base64,
+                "format": "mp3"
+            }
+        else:
+            return {"success": False, "error": result["error"]}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ==================== 智能推荐API ====================
+
+@app.get("/recommendations/{emotion}")
+async def get_emotion_recommendations(emotion: str):
+    """
+    获取基于情绪的智能推荐
+    """
+    try:
+        recommendations = get_recommendations(emotion)
+        return {"success": True, "recommendations": recommendations}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 
 # 初始化百度情感分析客户端
 def get_baidu_nlp_client():

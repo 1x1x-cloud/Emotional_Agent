@@ -36,3 +36,369 @@
     transform: rotate(360deg);
   }
 }
+
+/* 消息动画 */
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes messageFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 输入框焦点动画 */
+input:focus {
+  animation: inputFocus 0.2s ease-out forwards;
+}
+
+@keyframes inputFocus {
+  from {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+  }
+  to {
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+  }
+}
+
+/* 按钮悬停动画 */
+button:hover {
+  animation: buttonHover 0.2s ease-out forwards;
+}
+
+@keyframes buttonHover {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.02);
+  }
+}
+
+/* 按钮点击动画 */
+button:active {
+  animation: buttonClick 0.1s ease-out forwards;
+}
+
+@keyframes buttonClick {
+  from {
+    transform: scale(1.02);
+  }
+  to {
+    transform: scale(0.98);
+  }
+}
+
+/* 情感日记样式 */
+.diary-editor {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
+  background-color: #ffffff;
+  margin-bottom: 24px;
+}
+
+.diary-editor h3 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: #111827;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.diary-list {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
+  background-color: #ffffff;
+}
+
+.diary-list h3 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: #111827;
+}
+
+.diary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.diary-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  background-color: #f9fafb;
+}
+
+.diary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.diary-header h4 {
+  margin: 0;
+  font-size: 14px;
+  color: #374151;
+}
+
+.emotion-tag {
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  color: white;
+}
+
+.diary-content {
+  margin-bottom: 8px;
+}
+
+.diary-content p {
+  margin: 0;
+  font-size: 14px;
+  color: #4b5563;
+  line-height: 1.4;
+}
+
+.diary-tags {
+  margin-bottom: 8px;
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px 6px;
+  margin-right: 4px;
+  margin-bottom: 4px;
+  background-color: #e5e7eb;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.diary-footer {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+/* 语音输入样式 */
+.voice-input {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
+  background-color: #ffffff;
+  margin-bottom: 24px;
+}
+
+.voice-input h3 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: #111827;
+}
+
+.voice-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+
+.record-button {
+  padding: 12px 24px;
+  border: 2px solid #ef4444;
+  border-radius: 8px;
+  background-color: #ef4444;
+  color: white;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.record-button:hover {
+  background-color: #dc2626;
+  border-color: #dc2626;
+}
+
+.record-button.recording {
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+.recording-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ef4444;
+  font-size: 14px;
+}
+
+.recording-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #ef4444;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* 智能推荐样式 */
+.recommendation-panel {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
+  background-color: #ffffff;
+  margin-bottom: 24px;
+}
+
+.recommendation-panel h3 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: #111827;
+}
+
+.recommendation-message {
+  margin-bottom: 16px;
+  padding: 12px;
+  background-color: #f0f9ff;
+  border-radius: 8px;
+  border-left: 4px solid #3b82f6;
+}
+
+.recommendation-message p {
+  margin: 0;
+  color: #1e40af;
+}
+
+.recommendation-section {
+  margin-bottom: 16px;
+}
+
+.recommendation-section h4 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: #374151;
+}
+
+.recommendation-section ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.recommendation-section li {
+  margin-bottom: 4px;
+  font-size: 14px;
+  color: #4b5563;
+}
+
+/* 错误和成功消息 */
+.error-message {
+  padding: 8px 12px;
+  background-color: #fef2f2;
+  border: 1px solid #fee2e2;
+  border-radius: 6px;
+  color: #dc2626;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.success-message {
+  padding: 8px 12px;
+  background-color: #f0fdf4;
+  border: 1px solid #dcfce7;
+  border-radius: 6px;
+  color: #16a34a;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+/* 加载和空状态 */
+.loading {
+  text-align: center;
+  padding: 24px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.empty {
+  text-align: center;
+  padding: 24px;
+  color: #6b7280;
+  font-size: 14px;
+  background-color: #f9fafb;
+  border-radius: 8px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .diary-cards {
+    grid-template-columns: 1fr;
+  }
+  
+  .voice-controls {
+    flex-direction: column;
+  }
+  
+  .recording-indicator {
+    margin-top: 8px;
+  }
+}

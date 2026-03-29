@@ -1,5 +1,15 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import "./App.css";
+import { 
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  PieChart, Pie, Cell, BarChart, Bar
+} from 'recharts';
+import Register from './components/auth/Register';
+import Login from './components/auth/Login';
+import DiaryEditor from './components/diary/DiaryEditor';
+import DiaryList from './components/diary/DiaryList';
+import VoiceInput from './components/voice/VoiceInput';
+import RecommendationPanel from './components/recommendation/RecommendationPanel';
 
 // 获取情绪对应的emoji
 function getEmotionEmoji(emotion) {
@@ -40,6 +50,34 @@ function App() {
   const [userProfile, setUserProfile] = useState(null);
   const [emotionTrend, setEmotionTrend] = useState(null);
   const [emotionMonitor, setEmotionMonitor] = useState(null);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  
+  // 用户认证状态
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [showLogin, setShowLogin] = useState(false);
+  const [showRegister, setShowRegister] = useState(false);
+  
+  // 情绪状态
+  const [currentEmotion, setCurrentEmotion] = useState('neutral');
+  
+  // UI状态
+  const [activeTab, setActiveTab] = useState('chat'); // chat, diary, voice, recommendation
+  
+  // 检查本地存储中的用户信息
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try {
+        const user = JSON.parse(storedUser);
+        setCurrentUser(user);
+        setIsAuthenticated(true);
+      } catch (error) {
+        console.error('解析用户信息失败:', error);
+        localStorage.removeItem('user');
+      }
+    }
+  }, []);
 
   // 测试后端连接
   const testBackend = async () => {
@@ -104,6 +142,39 @@ function App() {
       alert('重置情感监测失败：' + error.message);
     }
   };
+  
+  // 处理用户登录
+  const handleLogin = (userData) => {
+    setCurrentUser(userData);
+    setIsAuthenticated(true);
+    setShowLogin(false);
+    localStorage.setItem('user', JSON.stringify(userData));
+  };
+  
+  // 处理用户注册
+  const handleRegister = (userData) => {
+    setCurrentUser(userData);
+    setIsAuthenticated(true);
+    setShowRegister(false);
+    localStorage.setItem('user', JSON.stringify(userData));
+  };
+  
+  // 处理用户登出
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setIsAuthenticated(false);
+    localStorage.removeItem('user');
+  };
+  
+  // 处理语音输入
+  const handleVoiceInput = (text) => {
+    setInput(text);
+  };
+  
+  // 处理日记保存
+  const handleDiarySave = () => {
+    // 日记保存后可以刷新日记列表
+  };
 
   const canSend = useMemo(() => input.trim().length > 0 && !isSending, [input, isSending]);
 
@@ -123,6 +194,11 @@ function App() {
       });
       const data = await r.json();
       console.log("聊天接口返回:", data);
+
+      // 更新当前情绪状态
+      if (data.sentiment) {
+        setCurrentEmotion(data.sentiment.sentiment === true ? 'positive' : data.sentiment.sentiment === false ? 'negative' : 'neutral');
+      }
 
       // 添加用户消息（包含情感标签，从后端返回）
       setMessages((prev) => [...prev, { 
@@ -144,320 +220,485 @@ function App() {
     }
   }
 
-  return (
-    <div className="App">
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: 24 }}>
-        <div style={{ display: "flex", gap: 24 }}>
-          {/* 左侧聊天区域 */}
-          <div style={{ flex: 1 }}>
-            <h2 style={{ marginTop: 0 }}>情感陪伴 AI</h2>
-            
-            {/* 测试后端连接按钮 */}
-            <div style={{ marginBottom: 16, padding: 12, backgroundColor: "#f0f9ff", borderRadius: 8, border: "1px solid #e0f2fe" }}>
-              <button 
-                onClick={testBackend} 
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 6,
-                  border: "1px solid #3b82f6",
-                  backgroundColor: "#3b82f6",
-                  color: "white",
-                  cursor: "pointer",
-                  marginRight: 12
-                }}
-              >
-                测试后端连接
-              </button>
-              <button 
-                onClick={() => { loadUserProfile(); loadEmotionTrend(); loadEmotionMonitor(); }} 
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 6,
-                  border: "1px solid #10b981",
-                  backgroundColor: "#10b981",
-                  color: "white",
-                  cursor: "pointer",
-                  marginRight: 12
-                }}
-              >
-                查看画像
-              </button>
-              <button 
-                onClick={loadEmotionMonitor} 
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 6,
-                  border: "1px solid #f59e0b",
-                  backgroundColor: "#f59e0b",
-                  color: "white",
-                  cursor: "pointer",
-                  marginRight: 12
-                }}
-              >
-                情感监测
-              </button>
-              <button 
-                onClick={resetEmotionMonitor} 
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 6,
-                  border: "1px solid #ef4444",
-                  backgroundColor: "#ef4444",
-                  color: "white",
-                  cursor: "pointer"
-                }}
-              >
-                重置监测
-              </button>
-              {backendMessage && (
-                <span style={{ marginLeft: 12, color: "#1e40af" }}>
-                  {backendMessage}
-                </span>
-              )}
-            </div>
+  // 主题样式
+  const theme = isDarkMode ? {
+    background: "#1f2937",
+    text: "#f9fafb",
+    card: "#374151",
+    border: "#4b5563",
+    button: {
+      primary: "#3b82f6",
+      success: "#10b981",
+      warning: "#f59e0b",
+      danger: "#ef4444",
+      info: "#6366f1"
+    },
+    message: {
+      user: "#1e40af",
+      assistant: "#374151"
+    },
+    input: "#374151",
+    inputText: "#f9fafb"
+  } : {
+    background: "#ffffff",
+    text: "#111827",
+    card: "#ffffff",
+    border: "#e5e7eb",
+    button: {
+      primary: "#3b82f6",
+      success: "#10b981",
+      warning: "#f59e0b",
+      danger: "#ef4444",
+      info: "#6366f1"
+    },
+    message: {
+      user: "#dbeafe",
+      assistant: "#ffffff"
+    },
+    input: "#ffffff",
+    inputText: "#111827"
+  };
 
-            <div
-              style={{
-                border: "1px solid #e5e7eb",
-                borderRadius: 12,
-                padding: 16,
-                height: "60vh",
-                overflowY: "auto",
-                background: "#fafafa",
-              }}
-            >
-              {messages.map((m, idx) => (
-                <div
-                  key={idx}
+  return (
+    <div className="App" style={{ 
+      minHeight: "100vh",
+      backgroundColor: theme.background,
+      color: theme.text
+    }}>
+      <div style={{ 
+        maxWidth: 1200, 
+        margin: "0 auto", 
+        padding: "16px",
+        paddingTop: "24px",
+        paddingBottom: "24px",
+        boxSizing: "border-box"
+      }}>
+        {/* 标题和用户状态 */}
+        <div style={{ marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h2 style={{ marginTop: 0, marginBottom: 0 }}>情感陪伴 AI</h2>
+          
+          {/* 用户状态区域 */}
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            {isAuthenticated ? (
+              <>
+                <span style={{ fontSize: "14px" }}>欢迎，{currentUser?.username}</span>
+                <button 
+                  onClick={handleLogout} 
                   style={{
-                    display: "flex",
-                    justifyContent: m.role === "user" ? "flex-end" : "flex-start",
-                    marginBottom: 10,
+                    padding: "6px 10px",
+                    borderRadius: 6,
+                    border: "1px solid #ef4444",
+                    backgroundColor: "#ef4444",
+                    color: "white",
+                    cursor: "pointer",
+                    fontSize: "14px"
                   }}
                 >
-                  <div
-                    style={{
-                      maxWidth: "75%",
-                      padding: "10px 12px",
-                      borderRadius: 12,
-                      whiteSpace: "pre-wrap",
-                      textAlign: "left",
-                      background: m.role === "user" ? "#dbeafe" : "#ffffff",
-                      border: "1px solid #e5e7eb",
+                  登出
+                </button>
+              </>
+            ) : (
+              <>
+                <button 
+                  onClick={() => setShowLogin(true)} 
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 6,
+                    border: "1px solid #3b82f6",
+                    backgroundColor: "#3b82f6",
+                    color: "white",
+                    cursor: "pointer",
+                    fontSize: "14px"
+                  }}
+                >
+                  登录
+                </button>
+                <button 
+                  onClick={() => setShowRegister(true)} 
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 6,
+                    border: "1px solid #10b981",
+                    backgroundColor: "#10b981",
+                    color: "white",
+                    cursor: "pointer",
+                    fontSize: "14px"
+                  }}
+                >
+                  注册
+                </button>
+              </>
+            )}
+            <button 
+              onClick={() => setIsDarkMode(!isDarkMode)} 
+              style={{
+                padding: "6px 10px",
+                borderRadius: 6,
+                border: "1px solid #6366f1",
+                backgroundColor: "#6366f1",
+                color: "white",
+                cursor: "pointer",
+                fontSize: "14px"
+              }}
+            >
+              {isDarkMode ? "浅色" : "深色"}
+            </button>
+          </div>
+        </div>
+
+        {/* 导航栏 */}
+        <div style={{ 
+          marginBottom: 24, 
+          borderBottom: `1px solid ${theme.border}`,
+          paddingBottom: 12
+        }}>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+            <button 
+              onClick={() => setActiveTab('chat')} 
+              style={{
+                padding: "8px 16px",
+                borderRadius: 8,
+                border: `1px solid ${theme.border}`,
+                backgroundColor: activeTab === 'chat' ? (isDarkMode ? "#374151" : "#f3f4f6") : theme.background,
+                color: theme.text,
+                cursor: "pointer",
+                fontSize: "14px",
+                fontWeight: activeTab === 'chat' ? "bold" : "normal"
+              }}
+            >
+              💬 聊天
+            </button>
+            <button 
+              onClick={() => setActiveTab('diary')} 
+              style={{
+                padding: "8px 16px",
+                borderRadius: 8,
+                border: `1px solid ${theme.border}`,
+                backgroundColor: activeTab === 'diary' ? (isDarkMode ? "#374151" : "#f3f4f6") : theme.background,
+                color: theme.text,
+                cursor: "pointer",
+                fontSize: "14px",
+                fontWeight: activeTab === 'diary' ? "bold" : "normal"
+              }}
+            >
+              📝 情感日记
+            </button>
+            <button 
+              onClick={() => setActiveTab('voice')} 
+              style={{
+                padding: "8px 16px",
+                borderRadius: 8,
+                border: `1px solid ${theme.border}`,
+                backgroundColor: activeTab === 'voice' ? (isDarkMode ? "#374151" : "#f3f4f6") : theme.background,
+                color: theme.text,
+                cursor: "pointer",
+                fontSize: "14px",
+                fontWeight: activeTab === 'voice' ? "bold" : "normal"
+              }}
+            >
+              🎤 语音交互
+            </button>
+            <button 
+              onClick={() => setActiveTab('recommendation')} 
+              style={{
+                padding: "8px 16px",
+                borderRadius: 8,
+                border: `1px solid ${theme.border}`,
+                backgroundColor: activeTab === 'recommendation' ? (isDarkMode ? "#374151" : "#f3f4f6") : theme.background,
+                color: theme.text,
+                cursor: "pointer",
+                fontSize: "14px",
+                fontWeight: activeTab === 'recommendation' ? "bold" : "normal"
+              }}
+            >
+              📋 智能推荐
+            </button>
+          </div>
+        </div>
+
+        {/* 主内容区域 */}
+        <div style={{ minHeight: "60vh" }}>
+          {/* 登录模态框 */}
+          {showLogin && (
+            <div style={{ 
+              position: "fixed", 
+              top: 0, 
+              left: 0, 
+              right: 0, 
+              bottom: 0, 
+              backgroundColor: "rgba(0, 0, 0, 0.5)",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              zIndex: 1000
+            }}>
+              <div style={{ 
+                backgroundColor: theme.card,
+                border: `1px solid ${theme.border}`,
+                borderRadius: 12,
+                padding: 24,
+                width: "90%",
+                maxWidth: 400
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                  <h3 style={{ marginTop: 0, marginBottom: 0 }}>用户登录</h3>
+                  <button 
+                    onClick={() => setShowLogin(false)} 
+                    style={{ 
+                      background: "none", 
+                      border: "none", 
+                      fontSize: "20px", 
+                      cursor: "pointer",
+                      color: theme.text
                     }}
                   >
-                    {m.content}
-                    {/* 显示情感标签 */}
-                    {m.role === "user" && m.sentiment && (
-                      <div style={{ 
-                        marginTop: 6, 
-                        fontSize: 12, 
-                        color: m.sentiment.sentiment === true ? "#10b981" : m.sentiment.sentiment === false ? "#ef4444" : "#6b7280",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4
-                      }}>
-                        <span>{getEmotionEmoji(m.sentiment.emotion)}</span>
-                        <span>{m.sentiment.label}</span>
-                        <span style={{ fontSize: 10, opacity: 0.7 }}>({Math.round(m.sentiment.confidence * 100)}%)</span>
-                      </div>
-                    )}
-                  </div>
+                    ×
+                  </button>
                 </div>
-              ))}
+                <Login onLogin={handleLogin} onClose={() => setShowLogin(false)} />
+              </div>
             </div>
+          )}
 
-            <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") send();
-                }}
-                placeholder="输入你想说的话，然后按 Enter 发送…"
+          {/* 注册模态框 */}
+          {showRegister && (
+            <div style={{ 
+              position: "fixed", 
+              top: 0, 
+              left: 0, 
+              right: 0, 
+              bottom: 0, 
+              backgroundColor: "rgba(0, 0, 0, 0.5)",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              zIndex: 1000
+            }}>
+              <div style={{ 
+                backgroundColor: theme.card,
+                border: `1px solid ${theme.border}`,
+                borderRadius: 12,
+                padding: 24,
+                width: "90%",
+                maxWidth: 400
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                  <h3 style={{ marginTop: 0, marginBottom: 0 }}>用户注册</h3>
+                  <button 
+                    onClick={() => setShowRegister(false)} 
+                    style={{ 
+                      background: "none", 
+                      border: "none", 
+                      fontSize: "20px", 
+                      cursor: "pointer",
+                      color: theme.text
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+                <Register onRegister={handleRegister} onClose={() => setShowRegister(false)} />
+              </div>
+            </div>
+          )}
+
+          {/* 聊天界面 */}
+          {activeTab === 'chat' && (
+            <div style={{ display: "flex", gap: 24, flexDirection: "column" }}>
+              <div
                 style={{
-                  flex: 1,
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #e5e7eb",
-                  outline: "none",
-                }}
-              />
-              <button
-                onClick={send}
-                disabled={!canSend}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  border: "1px solid #e5e7eb",
-                  background: canSend ? "#111827" : "#9ca3af",
-                  color: "#fff",
-                  cursor: canSend ? "pointer" : "not-allowed",
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: 12,
+                  padding: 16,
+                  height: "60vh",
+                  minHeight: 400,
+                  overflowY: "auto",
+                  background: isDarkMode ? "#111827" : "#fafafa",
                 }}
               >
-                {isSending ? "发送中…" : "发送"}
-              </button>
-            </div>
-          </div>
-
-          {/* 右侧用户画像和情感趋势 */}
-          {showProfile && (
-            <div style={{ width: 350, marginLeft: 24 }}>
-              {/* 用户画像 */}
-              {userProfile && (
-                <div style={{ 
-                  border: "1px solid #e5e7eb", 
-                  borderRadius: 12, 
-                  padding: 16, 
-                  marginBottom: 16,
-                  backgroundColor: "#fff"
-                }}>
-                  <h3 style={{ marginTop: 0, marginBottom: 12 }}>用户画像</h3>
-                  <div style={{ marginBottom: 12 }}>
-                    <strong>总消息数：</strong> {userProfile.total_messages}
-                  </div>
-                  <div style={{ marginBottom: 12 }}>
-                    <strong>常用话题：</strong>
-                    <div style={{ marginTop: 8 }}>
-                      {userProfile.common_topics.map((topic, idx) => (
-                        <span key={idx} style={{ 
-                          display: "inline-block",
-                          padding: "4px 8px",
-                          margin: "4px",
-                          backgroundColor: "#f0f9ff",
-                          borderRadius: 4,
-                          fontSize: 12
+                {messages.map((m, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      display: "flex",
+                      justifyContent: m.role === "user" ? "flex-end" : "flex-start",
+                      marginBottom: 10,
+                      animation: "messageSlideIn 0.3s ease-out forwards",
+                      opacity: 0,
+                      transform: m.role === "user" ? "translateX(20px)" : "translateX(-20px)"
+                    }}
+                  >
+                    <div
+                      style={{
+                        maxWidth: "85%",
+                        padding: "10px 12px",
+                        borderRadius: 12,
+                        whiteSpace: "pre-wrap",
+                        textAlign: "left",
+                        background: m.role === "user" ? theme.message.user : theme.message.assistant,
+                        border: `1px solid ${theme.border}`,
+                        color: isDarkMode ? "#f9fafb" : "#111827",
+                        animation: "messageFadeIn 0.3s ease-out forwards"
+                      }}
+                    >
+                      {m.content}
+                      {/* 显示情感标签 */}
+                      {m.role === "user" && m.sentiment && (
+                        <div style={{ 
+                          marginTop: 6, 
+                          fontSize: 12, 
+                          color: m.sentiment.sentiment === true ? "#10b981" : m.sentiment.sentiment === false ? "#ef4444" : "#6b7280",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 4
                         }}>
-                          {topic}
-                        </span>
-                      ))}
+                          <span>{getEmotionEmoji(m.sentiment.emotion)}</span>
+                          <span>{m.sentiment.label}</span>
+                          <span style={{ fontSize: 10, opacity: 0.7 }}>({Math.round(m.sentiment.confidence * 100)}%)</span>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div style={{ marginBottom: 12 }}>
-                    <strong>情绪分布：</strong>
-                    <div style={{ marginTop: 8 }}>
-                      {Object.entries(userProfile.emotion_distribution).map(([emotion, count]) => (
-                        <div key={emotion} style={{ display: "flex", alignItems: "center", marginBottom: 4 }}>
-                          <span>{getEmotionEmoji(emotion)}</span>
-                          <span style={{ marginLeft: 8 }}>{emotion}: {count}</span>
-                        </div>
-                      ))}
-                    </div>
+                ))}
+              </div>
+
+              <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+                <input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") send();
+                  }}
+                  placeholder="输入你想说的话，然后按 Enter 发送…"
+                  style={{
+                    flex: 1,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: `1px solid ${theme.border}`,
+                    outline: "none",
+                    backgroundColor: theme.input,
+                    color: theme.inputText,
+                    placeholderColor: isDarkMode ? "#9ca3af" : "#6b7280"
+                  }}
+                />
+                <button
+                  onClick={send}
+                  disabled={!canSend}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    border: `1px solid ${theme.border}`,
+                    background: canSend ? (isDarkMode ? "#374151" : "#111827") : (isDarkMode ? "#4b5563" : "#9ca3af"),
+                    color: "#fff",
+                    cursor: canSend ? "pointer" : "not-allowed",
+                    minWidth: 80
+                  }}
+                >
+                  {isSending ? "发送中…" : "发送"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 情感日记界面 */}
+          {activeTab === 'diary' && (
+            <div style={{ display: "flex", gap: 24, flexDirection: "column" }}>
+              <DiaryEditor onSave={handleDiarySave} user_id={currentUser?.user_id} />
+              <DiaryList user_id={currentUser?.user_id} />
+            </div>
+          )}
+
+          {/* 语音交互界面 */}
+          {activeTab === 'voice' && (
+            <div style={{ display: "flex", gap: 24, flexDirection: "column" }}>
+              <VoiceInput onVoiceInput={handleVoiceInput} />
+              <div style={{ 
+                border: `1px solid ${theme.border}`,
+                borderRadius: 12,
+                padding: 16,
+                backgroundColor: theme.card
+              }}>
+                <h3 style={{ marginTop: 0, marginBottom: 16 }}>语音转文字结果</h3>
+                <div style={{ 
+                  padding: 12, 
+                  borderRadius: 8,
+                  backgroundColor: isDarkMode ? "#374151" : "#f3f4f6",
+                  minHeight: 100
+                }}>
+                  {input || "点击开始录音，语音会自动转成文字显示在这里..."}
+                </div>
+                <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
+                  <button
+                    onClick={() => send()}
+                    disabled={!input.trim()}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      border: `1px solid ${theme.border}`,
+                      background: input.trim() ? (isDarkMode ? "#374151" : "#111827") : (isDarkMode ? "#4b5563" : "#9ca3af"),
+                      color: "#fff",
+                      cursor: input.trim() ? "pointer" : "not-allowed",
+                      minWidth: 80
+                    }}
+                  >
+                    发送消息
+                  </button>
+                  <button
+                    onClick={() => setInput("")}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      border: `1px solid ${theme.border}`,
+                      background: theme.background,
+                      color: theme.text,
+                      cursor: "pointer",
+                      minWidth: 80
+                    }}
+                  >
+                    清空
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 智能推荐界面 */}
+          {activeTab === 'recommendation' && (
+            <div style={{ display: "flex", gap: 24, flexDirection: "column" }}>
+              <RecommendationPanel currentEmotion={currentEmotion} />
+              <div style={{ 
+                border: `1px solid ${theme.border}`,
+                borderRadius: 12,
+                padding: 16,
+                backgroundColor: theme.card
+              }}>
+                <h3 style={{ marginTop: 0, marginBottom: 16 }}>当前情绪状态</h3>
+                <div style={{ 
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: 16,
+                  borderRadius: 8,
+                  backgroundColor: currentEmotion === 'positive' ? "#f0fdf4" : 
+                                  currentEmotion === 'negative' ? "#fef2f2" : "#f3f4f6"
+                }}>
+                  <div style={{ fontSize: "48px" }}>
+                    {currentEmotion === 'positive' ? "😊" : 
+                     currentEmotion === 'negative' ? "😢" : "😐"}
                   </div>
                   <div>
-                    <strong>活跃时段：</strong>
-                    <div style={{ marginTop: 8 }}>
-                      {userProfile.peak_hours.map((hour, idx) => (
-                        <div key={idx} style={{ fontSize: 12, color: "#6b7280" }}>
-                          {hour.hour}:00 - {hour.count} 条消息
-                        </div>
-                      ))}
-                    </div>
+                    <h4 style={{ marginTop: 0, marginBottom: 8 }}>
+                      {currentEmotion === 'positive' ? "开心" : 
+                       currentEmotion === 'negative' ? "难过" : "平静"}
+                    </h4>
+                    <p style={{ marginTop: 0, color: "#6b7280" }}>
+                      {currentEmotion === 'positive' ? "你现在心情不错，继续保持！" : 
+                       currentEmotion === 'negative' ? "希望我的推荐能让你感觉好一些" : 
+                       "保持平静的心态，享受当下"}
+                    </p>
                   </div>
                 </div>
-              )}
-
-              {/* 情感趋势 */}
-              {emotionTrend && (
-                <div style={{ 
-                  border: "1px solid #e5e7eb", 
-                  borderRadius: 12, 
-                  padding: 16, 
-                  backgroundColor: "#fff"
-                }}>
-                  <h3 style={{ marginTop: 0, marginBottom: 12 }}>情感趋势</h3>
-                  <div style={{ marginBottom: 12 }}>
-                    <strong>趋势方向：</strong>
-                    <span style={{ 
-                      marginLeft: 8,
-                      color: emotionTrend.trend === "improving" ? "#10b981" : 
-                             emotionTrend.trend === "declining" ? "#ef4444" : "#6b7280"
-                    }}>
-                      {emotionTrend.trend === "improving" ? "📈 改善中" : 
-                       emotionTrend.trend === "declining" ? "📉 下降中" : "➡️ 稳定"}
-                    </span>
-                  </div>
-                  <div style={{ marginBottom: 12 }}>
-                    <strong>正向比例：</strong> {(emotionTrend.positive_ratio * 100).toFixed(1)}%
-                  </div>
-                  <div style={{ marginBottom: 12 }}>
-                    <strong>负向比例：</strong> {(emotionTrend.negative_ratio * 100).toFixed(1)}%
-                  </div>
-                  <div style={{ marginBottom: 12 }}>
-                    <strong>主导情绪：</strong> {getEmotionEmoji(emotionTrend.dominant_emotion)} {emotionTrend.dominant_emotion}
-                  </div>
-                  <div style={{ marginBottom: 12 }}>
-                    <strong>情绪变化：</strong> {emotionTrend.emotion_changes} 次
-                  </div>
-                  {emotionTrend.recommendations && emotionTrend.recommendations.length > 0 && (
-                    <div>
-                      <strong>个性化建议：</strong>
-                      <ul style={{ marginTop: 8, paddingLeft: 20 }}>
-                        {emotionTrend.recommendations.map((rec, idx) => (
-                          <li key={idx} style={{ marginBottom: 4, fontSize: 13 }}>
-                            {rec}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* 情感监测 */}
-              {emotionMonitor && (
-                <div style={{ 
-                  border: "1px solid #e5e7eb", 
-                  borderRadius: 12, 
-                  padding: 16, 
-                  marginTop: 16,
-                  backgroundColor: "#fff"
-                }}>
-                  <h3 style={{ marginTop: 0, marginBottom: 12 }}>情感监测</h3>
-                  <div style={{ marginBottom: 12 }}>
-                    <strong>当前趋势：</strong>
-                    <span style={{ 
-                      marginLeft: 8,
-                      color: emotionMonitor.trend.trend === "improving" ? "#10b981" : 
-                             emotionMonitor.trend.trend === "declining" ? "#ef4444" : "#6b7280"
-                    }}>
-                      {emotionMonitor.trend.trend === "improving" ? "📈 改善中" : 
-                       emotionMonitor.trend.trend === "declining" ? "📉 下降中" : "➡️ 稳定"}
-                    </span>
-                  </div>
-                  <div style={{ marginBottom: 12 }}>
-                    <strong>当前情绪：</strong> {getEmotionEmoji(emotionMonitor.trend.current_emotion)} {emotionMonitor.trend.current_emotion}
-                  </div>
-                  <div style={{ marginBottom: 12 }}>
-                    <strong>负面情绪连续：</strong> {emotionMonitor.trend.negative_streak} 次
-                  </div>
-                  {emotionMonitor.alert && (
-                    <div style={{ 
-                      marginBottom: 12, 
-                      padding: 12, 
-                      backgroundColor: emotionMonitor.alert.level === "intervention" ? "#fef2f2" : "#fef3c7",
-                      border: emotionMonitor.alert.level === "intervention" ? "1px solid #fee2e2" : "1px solid #fde68a",
-                      borderRadius: 6
-                    }}>
-                      <strong>⚠️ {emotionMonitor.alert.level === "intervention" ? "干预提醒" : "预警提醒"}</strong>
-                      <p style={{ marginTop: 4, marginBottom: 4 }}>{emotionMonitor.alert.message}</p>
-                      <p style={{ marginTop: 4, fontSize: 13, color: "#6b7280" }}>{emotionMonitor.alert.recommendation}</p>
-                    </div>
-                  )}
-                  {emotionMonitor.suggestion && (
-                    <div style={{ 
-                      marginBottom: 12, 
-                      padding: 12, 
-                      backgroundColor: "#f0fdf4",
-                      border: "1px solid #dcfce7",
-                      borderRadius: 6
-                    }}>
-                      <strong>💡 干预建议</strong>
-                      <p style={{ marginTop: 4, fontSize: 13 }}>{emotionMonitor.suggestion}</p>
-                    </div>
-                  )}
-                </div>
-              )}
+              </div>
             </div>
           )}
         </div>

@@ -23,6 +23,9 @@ def init_database():
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        email TEXT UNIQUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
@@ -52,6 +55,23 @@ def init_database():
     )
     ''')
     
+    # 创建情感日记表
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS emotion_diary (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT,
+        date TEXT,
+        emotion TEXT,
+        intensity INTEGER,
+        notes TEXT,
+        tags TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id),
+        UNIQUE(user_id, date)
+    )
+    ''')
+    
     conn.commit()
     conn.close()
 
@@ -65,7 +85,7 @@ def get_db_connection():
     return conn
 
 
-def create_user(user_id: str) -> bool:
+def create_user(user_id: str, username: str = None, password_hash: str = None, email: str = None) -> bool:
     """
     创建用户（如果不存在）
     """
@@ -73,14 +93,74 @@ def create_user(user_id: str) -> bool:
     cursor = conn.cursor()
     
     try:
-        cursor.execute(
-            "INSERT OR IGNORE INTO users (id, created_at, last_active) VALUES (?, ?, ?)",
-            (user_id, datetime.now(), datetime.now())
-        )
+        if username and password_hash:
+            # 注册新用户
+            cursor.execute(
+                "INSERT OR IGNORE INTO users (id, username, password_hash, email, created_at, last_active) VALUES (?, ?, ?, ?, ?, ?)",
+                (user_id, username, password_hash, email, datetime.now(), datetime.now())
+            )
+        else:
+            # 兼容旧版本：创建匿名用户
+            cursor.execute(
+                "INSERT OR IGNORE INTO users (id, username, password_hash, created_at, last_active) VALUES (?, ?, ?, ?, ?)",
+                (user_id, user_id, "", datetime.now(), datetime.now())
+            )
         conn.commit()
         return True
     except Exception as e:
         print(f"创建用户失败: {e}")
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
+
+
+def get_user_by_username(username: str) -> Optional[Dict]:
+    """
+    根据用户名获取用户信息
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute(
+            "SELECT id, username, password_hash, email, created_at, last_active FROM users WHERE username = ?",
+            (username,)
+        )
+        row = cursor.fetchone()
+        if row:
+            return {
+                "id": row["id"],
+                "username": row["username"],
+                "password_hash": row["password_hash"],
+                "email": row["email"],
+                "created_at": row["created_at"],
+                "last_active": row["last_active"]
+            }
+        return None
+    except Exception as e:
+        print(f"获取用户失败: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def update_user_last_active(user_id: str) -> bool:
+    """
+    更新用户最后活跃时间
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute(
+            "UPDATE users SET last_active = ? WHERE id = ?",
+            (datetime.now(), user_id)
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"更新用户活跃时间失败: {e}")
         conn.rollback()
         return False
     finally:
@@ -301,6 +381,101 @@ def get_daily_sentiment_summary(user_id: str, days: int = 7) -> List[Dict]:
     except Exception as e:
         print(f"获取每日情感总结失败: {e}")
         return []
+
+
+def save_emotion_diary(user_id: str, date: str, emotion: str, intensity: int, notes: str = None, tags: str = None) -> bool:
+    """
+    保存情感日记
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute(
+            '''INSERT OR REPLACE INTO emotion_diary (user_id, date, emotion, intensity, notes, tags, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)''',
+            (user_id, date, emotion, intensity, notes, tags, datetime.now())
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"保存情感日记失败: {e}")
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
+
+
+def get_emotion_diary(user_id: str, date: str = None) -> Optional[Dict]:
+    """
+    获取情感日记
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        if date:
+            cursor.execute(
+                "SELECT * FROM emotion_diary WHERE user_id = ? AND date = ?",
+                (user_id, date)
+            )
+        else:
+            cursor.execute(
+                "SELECT * FROM emotion_diary WHERE user_id = ? ORDER BY date DESC LIMIT 1",
+                (user_id,)
+            )
+        
+        row = cursor.fetchone()
+        if row:
+            return {
+                "id": row["id"],
+                "date": row["date"],
+                "emotion": row["emotion"],
+                "intensity": row["intensity"],
+                "notes": row["notes"],
+                "tags": row["tags"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"]
+            }
+        return None
+    except Exception as e:
+        print(f"获取情感日记失败: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def get_emotion_diary_list(user_id: str, days: int = 30) -> List[Dict]:
+    """
+    获取情感日记列表
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute(
+            "SELECT * FROM emotion_diary WHERE user_id = ? AND date >= date('now', '-' || ? || ' days') ORDER BY date DESC",
+            (user_id, days)
+        )
+        
+        diaries = []
+        for row in cursor.fetchall():
+            diaries.append({
+                "id": row["id"],
+                "date": row["date"],
+                "emotion": row["emotion"],
+                "intensity": row["intensity"],
+                "notes": row["notes"],
+                "tags": row["tags"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"]
+            })
+        return diaries
+    except Exception as e:
+        print(f"获取情感日记列表失败: {e}")
+        return []
+    finally:
+        conn.close()
 
 
 # 初始化数据库
