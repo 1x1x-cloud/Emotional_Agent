@@ -16,11 +16,18 @@ from database import init_database, create_conversation, save_message, get_user_
 # 导入用户画像分析
 from user_profile import analyze_user_profile, analyze_emotion_trend, get_emotion_summary
 
+# 导入情感监测与干预
+from emotion_monitor import add_emotion_record, check_emotion_alert, get_intervention_suggestion, get_emotion_trend, reset_emotion_monitor
+
 app = FastAPI()
 
 # 初始化数据库
 init_database()
 print("数据库初始化完成")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
 
 # 添加CORS配置
 app.add_middleware(
@@ -215,7 +222,7 @@ def simple_sentiment_analysis(text: str) -> dict:
     """
     本地简单情感分析（降级方案）
     """
-    positive_words = ["开心", "快乐", "高兴", "喜悦", "幸福", "满足", "兴奋", "棒", "好"]
+    positive_words = ["开心", "快乐", "高兴", "喜悦", "幸福", "满足", "兴奋", "棒", "好", "哈哈", "嘻嘻", "呵呵", "周末", "假期", "舒服", "放松", "惬意"]
     negative_words = ["难过", "悲伤", "痛苦", "焦虑", "愤怒", "失望", "沮丧", "累", "烦"]
     
     positive_score = sum(1 for word in positive_words if word in text)
@@ -347,6 +354,32 @@ async def get_profile_trend(user_id: str, days: int = 7):
     
     trend = analyze_emotion_trend(recent_messages, days)
     return {"trend": trend}
+
+
+# 情感监测与干预API
+@app.get("/emotion/monitor/{user_id}")
+async def get_emotion_monitor(user_id: str):
+    """
+    获取用户的情感监测状态
+    """
+    trend = get_emotion_trend(user_id)
+    alert = check_emotion_alert(user_id)
+    suggestion = get_intervention_suggestion(user_id)
+    
+    return {
+        "trend": trend,
+        "alert": alert,
+        "suggestion": suggestion
+    }
+
+
+@app.post("/emotion/reset/{user_id}")
+async def reset_emotion_monitor_api(user_id: str):
+    """
+    重置情感监测
+    """
+    reset_emotion_monitor(user_id)
+    return {"message": "情感监测已重置"}
 
 class ChatRequest(BaseModel):
     text: str
@@ -512,7 +545,20 @@ async def chat(req: ChatRequest):
     save_message(conversation_id, "user", user_text, user_sentiment)
     print(f"[DEBUG] 用户消息已保存")
 
-    # 4. 获取AI Prompt（包含详细的共情指导）
+    # 4. 添加情感记录到监测器
+    add_emotion_record(
+        user_id,
+        empathy_result["emotion"],
+        empathy_result["category"] == "positive",
+        empathy_result["confidence"]
+    )
+    print(f"[DEBUG] 情感记录已添加")
+
+    # 5. 检查情绪预警
+    alert = check_emotion_alert(user_id)
+    print(f"[DEBUG] 情绪预警: {alert}")
+
+    # 6. 获取AI Prompt（包含详细的共情指导）
     ai_prompt = empathy_result["ai_prompt"]
     print(f"[DEBUG] AI Prompt已生成")
 
@@ -543,7 +589,14 @@ async def chat(req: ChatRequest):
         reply = empathy_result["empathy_response"]
         provider = "empathy_strategy"
 
-    # 7. 保存AI回复到数据库
+    # 7. 如果有情绪预警，添加干预建议
+    if alert:
+        intervention_suggestion = get_intervention_suggestion(user_id)
+        if intervention_suggestion:
+            reply += f"\n\n💡 {alert['message']}\n{intervention_suggestion}"
+            print(f"[DEBUG] 添加干预建议")
+
+    # 8. 保存AI回复到数据库
     save_message(conversation_id, "assistant", reply)
     print(f"[DEBUG] AI回复已保存")
 
@@ -552,7 +605,8 @@ async def chat(req: ChatRequest):
         "reply": reply, 
         "provider": provider, 
         "conversation_id": conversation_id,
-        "sentiment": user_sentiment
+        "sentiment": user_sentiment,
+        "alert": alert
     }
 
 def generate_mood_prompt(sentiment_result: dict) -> str:

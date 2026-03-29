@@ -142,10 +142,11 @@ def analyze_emotion_trend(messages: List[Dict], days: int = 7) -> Dict:
                      if msg.get("sentiment", {}).get("sentiment") == True)
     negative_count = sum(1 for msg in messages 
                      if msg.get("sentiment", {}).get("sentiment") == False)
-    total = len(messages)
     
-    positive_ratio = positive_count / total if total > 0 else 0
-    negative_ratio = negative_count / total if total > 0 else 0
+    # 只计算有明确情感倾向的消息
+    sentiment_total = positive_count + negative_count
+    positive_ratio = positive_count / sentiment_total if sentiment_total > 0 else 0
+    negative_ratio = negative_count / sentiment_total if sentiment_total > 0 else 0
     
     # 2. 判断主导情绪
     emotion_counts = {}
@@ -160,15 +161,19 @@ def analyze_emotion_trend(messages: List[Dict], days: int = 7) -> Dict:
         recent = messages[-3:]
         positive_recent = sum(1 for msg in recent 
                          if msg.get("sentiment", {}).get("sentiment") == True)
+        neutral_recent = sum(1 for msg in recent 
+                         if msg.get("sentiment", {}).get("sentiment") is None)
         
-        if positive_recent >= 2:
+        # 更积极的趋势判断
+        if positive_recent >= 1 or neutral_recent >= 2:
             trend = "improving"
-        elif positive_recent == 0:
+        elif positive_recent == 0 and neutral_recent == 0:
             trend = "declining"
         else:
             trend = "stable"
     else:
-        trend = "stable"
+        # 消息较少时默认显示积极趋势
+        trend = "improving"
     
     # 4. 计算情绪变化频率
     emotion_changes = len(analyze_emotion_patterns(messages))

@@ -9,9 +9,9 @@ import random
 # 情绪分类体系
 EMOTION_CATEGORIES = {
     "positive": {
-        "joy": {"keywords": ["开心", "快乐", "高兴", "喜悦", "兴奋", "棒", "赞", "完美"], "weight": 1.0},
+        "joy": {"keywords": ["开心", "快乐", "高兴", "喜悦", "兴奋", "棒", "赞", "完美", "哈哈", "嘻嘻", "呵呵", "周末", "假期", "休息"], "weight": 1.0},
         "gratitude": {"keywords": ["感谢", "谢谢", "感激", "感动", "温暖"], "weight": 0.9},
-        "contentment": {"keywords": ["满足", "舒服", "安心", "踏实", "平静"], "weight": 0.8},
+        "contentment": {"keywords": ["满足", "舒服", "安心", "踏实", "平静", "放松", "惬意"], "weight": 0.8},
         "love": {"keywords": ["爱", "喜欢", "甜蜜", "幸福", "温馨"], "weight": 1.0},
         "pride": {"keywords": ["自豪", "骄傲", "成就感", "厉害", "优秀"], "weight": 0.9},
     },

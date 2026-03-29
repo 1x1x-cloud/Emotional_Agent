@@ -39,6 +39,7 @@ function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [userProfile, setUserProfile] = useState(null);
   const [emotionTrend, setEmotionTrend] = useState(null);
+  const [emotionMonitor, setEmotionMonitor] = useState(null);
 
   // 测试后端连接
   const testBackend = async () => {
@@ -74,6 +75,33 @@ function App() {
     } catch (error) {
       console.error('Error:', error);
       alert('加载情感趋势失败：' + error.message);
+    }
+  };
+
+  // 加载情感监测
+  const loadEmotionMonitor = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/emotion/monitor/demo_user');
+      const data = await response.json();
+      setEmotionMonitor(data);
+    } catch (error) {
+      console.error('Error:', error);
+      alert('加载情感监测失败：' + error.message);
+    }
+  };
+
+  // 重置情感监测
+  const resetEmotionMonitor = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/emotion/reset/demo_user', {
+        method: 'POST'
+      });
+      const data = await response.json();
+      alert(data.message);
+      loadEmotionMonitor();
+    } catch (error) {
+      console.error('Error:', error);
+      alert('重置情感监测失败：' + error.message);
     }
   };
 
@@ -141,7 +169,7 @@ function App() {
                 测试后端连接
               </button>
               <button 
-                onClick={() => { loadUserProfile(); loadEmotionTrend(); }} 
+                onClick={() => { loadUserProfile(); loadEmotionTrend(); loadEmotionMonitor(); }} 
                 style={{
                   padding: "8px 12px",
                   borderRadius: 6,
@@ -153,6 +181,33 @@ function App() {
                 }}
               >
                 查看画像
+              </button>
+              <button 
+                onClick={loadEmotionMonitor} 
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 6,
+                  border: "1px solid #f59e0b",
+                  backgroundColor: "#f59e0b",
+                  color: "white",
+                  cursor: "pointer",
+                  marginRight: 12
+                }}
+              >
+                情感监测
+              </button>
+              <button 
+                onClick={resetEmotionMonitor} 
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 6,
+                  border: "1px solid #ef4444",
+                  backgroundColor: "#ef4444",
+                  color: "white",
+                  cursor: "pointer"
+                }}
+              >
+                重置监测
               </button>
               {backendMessage && (
                 <span style={{ marginLeft: 12, color: "#1e40af" }}>
@@ -344,6 +399,61 @@ function App() {
                           </li>
                         ))}
                       </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 情感监测 */}
+              {emotionMonitor && (
+                <div style={{ 
+                  border: "1px solid #e5e7eb", 
+                  borderRadius: 12, 
+                  padding: 16, 
+                  marginTop: 16,
+                  backgroundColor: "#fff"
+                }}>
+                  <h3 style={{ marginTop: 0, marginBottom: 12 }}>情感监测</h3>
+                  <div style={{ marginBottom: 12 }}>
+                    <strong>当前趋势：</strong>
+                    <span style={{ 
+                      marginLeft: 8,
+                      color: emotionMonitor.trend.trend === "improving" ? "#10b981" : 
+                             emotionMonitor.trend.trend === "declining" ? "#ef4444" : "#6b7280"
+                    }}>
+                      {emotionMonitor.trend.trend === "improving" ? "📈 改善中" : 
+                       emotionMonitor.trend.trend === "declining" ? "📉 下降中" : "➡️ 稳定"}
+                    </span>
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <strong>当前情绪：</strong> {getEmotionEmoji(emotionMonitor.trend.current_emotion)} {emotionMonitor.trend.current_emotion}
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <strong>负面情绪连续：</strong> {emotionMonitor.trend.negative_streak} 次
+                  </div>
+                  {emotionMonitor.alert && (
+                    <div style={{ 
+                      marginBottom: 12, 
+                      padding: 12, 
+                      backgroundColor: emotionMonitor.alert.level === "intervention" ? "#fef2f2" : "#fef3c7",
+                      border: emotionMonitor.alert.level === "intervention" ? "1px solid #fee2e2" : "1px solid #fde68a",
+                      borderRadius: 6
+                    }}>
+                      <strong>⚠️ {emotionMonitor.alert.level === "intervention" ? "干预提醒" : "预警提醒"}</strong>
+                      <p style={{ marginTop: 4, marginBottom: 4 }}>{emotionMonitor.alert.message}</p>
+                      <p style={{ marginTop: 4, fontSize: 13, color: "#6b7280" }}>{emotionMonitor.alert.recommendation}</p>
+                    </div>
+                  )}
+                  {emotionMonitor.suggestion && (
+                    <div style={{ 
+                      marginBottom: 12, 
+                      padding: 12, 
+                      backgroundColor: "#f0fdf4",
+                      border: "1px solid #dcfce7",
+                      borderRadius: 6
+                    }}>
+                      <strong>💡 干预建议</strong>
+                      <p style={{ marginTop: 4, fontSize: 13 }}>{emotionMonitor.suggestion}</p>
                     </div>
                   )}
                 </div>
